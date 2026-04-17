@@ -7,3 +7,9 @@ frontend/dist/
 
 # IDE
 .idea/
+
+# Environment
+.env
+
+# Secrets
+secrets/
