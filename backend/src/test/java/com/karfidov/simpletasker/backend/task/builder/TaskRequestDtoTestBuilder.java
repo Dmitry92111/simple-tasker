@@ -1,4 +1,4 @@
-package com.karfidov.simpletasker.backend.task.fixture;
+package com.karfidov.simpletasker.backend.task.builder;
 
 import com.karfidov.simpletasker.backend.task.dto.request.TaskRequestDto;
 

@@ -1,10 +1,13 @@
 package com.karfidov.simpletasker.backend.task.integration;
 
+import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionMessages;
+import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionReasons;
+import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import com.karfidov.simpletasker.backend.support.AbstractIntegrationTest;
 import com.karfidov.simpletasker.backend.task.dto.request.TaskRequestDto;
-import com.karfidov.simpletasker.backend.task.fixture.TaskRequestDtoTestBuilder;
+import com.karfidov.simpletasker.backend.task.builder.TaskRequestDtoTestBuilder;
 import com.karfidov.simpletasker.backend.task.model.Task;
 import com.karfidov.simpletasker.backend.task.model.TaskStatus;
 import com.karfidov.simpletasker.backend.task.repository.TaskRepository;
@@ -21,6 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.hamcrest.Matchers.*;
 import static org.assertj.core.api.Assertions.*;
 
 
@@ -61,5 +65,26 @@ public class TaskControllerIT extends AbstractIntegrationTest {
         assertThat(savedTask.getTitle()).isEqualTo(expectedTitle);
         assertThat(savedTask.getDescription()).isEqualTo(expectedDescription);
         assertThat(savedTask.getStatus()).isEqualTo(TaskStatus.NEW);
+    }
+
+    @Test
+    void create_shouldReturn400_whenTitleIsBlankAfterTrim() throws Exception {
+        TaskRequestDto notValidRequestDto = TaskRequestDtoTestBuilder.aRequestDto()
+                .withTitle(" ")
+                .withDescription("Test Description")
+                .build();
+
+        mockMvc.perform(post("/api/v1/tasks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(notValidRequestDto)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(HttpStatus.BAD_REQUEST.name()))
+                .andExpect(jsonPath("$.reason").value(ExceptionReasons.INCORRECT_REQUEST))
+                .andExpect(jsonPath("$.message").value(ExceptionMessages.VALIDATION_FAILED))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.errors").isArray())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0]", containsString("title")))
+                .andExpect(jsonPath("$.errors[0]", containsString("must not be blank")));
     }
 }
