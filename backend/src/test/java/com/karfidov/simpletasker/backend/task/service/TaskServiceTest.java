@@ -6,8 +6,8 @@ import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionMes
 import com.karfidov.simpletasker.backend.support.TestTime;
 import com.karfidov.simpletasker.backend.task.dto.request.TaskRequestDto;
 import com.karfidov.simpletasker.backend.task.dto.response.TaskFullDto;
-import com.karfidov.simpletasker.backend.task.fixture.TaskRequestDtoTestBuilder;
-import com.karfidov.simpletasker.backend.task.fixture.TaskTestBuilder;
+import com.karfidov.simpletasker.backend.task.builder.TaskRequestDtoTestBuilder;
+import com.karfidov.simpletasker.backend.task.builder.TaskTestBuilder;
 import com.karfidov.simpletasker.backend.task.mapper.TaskMapper;
 import com.karfidov.simpletasker.backend.task.model.Task;
 import com.karfidov.simpletasker.backend.task.model.TaskStatus;

@@ -7,6 +7,7 @@ import com.karfidov.simpletasker.backend.error.exception.NotFoundException;
 import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionMessages;
 import com.karfidov.simpletasker.backend.error.reasons_and_messages.ExceptionReasons;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -23,39 +24,35 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final Clock clock;
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     //@Valid exceptions
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ExceptionResponse handleValidationExceptions(Exception ex,
+    public ExceptionResponse handleValidationExceptions(BindException ex,
                                                         HttpServletRequest req) {
-        BindingResult bindingResult;
+        BindingResult bindingResult = ex.getBindingResult();
 
-        if (ex instanceof MethodArgumentNotValidException) {
-            bindingResult = ((MethodArgumentNotValidException) ex).getBindingResult();
-        } else {
-            bindingResult = ((BindException) ex).getBindingResult();
-        }
 
         log4xx(HttpStatus.BAD_REQUEST, req, "validation errors=%d", bindingResult.getFieldErrorCount());
         List<String> errorMessages = bindingResult.getFieldErrors().stream().map(this::buildFieldMessage).toList();
 
-        String message = (errorMessages.size() == 1) ? errorMessages.getFirst() : ExceptionMessages.VALIDATION_FAILED;
-
-        List<String> errors = (errorMessages.size() > 1) ? errorMessages : List.of();
-
-        return new ExceptionResponse(
-                HttpStatus.BAD_REQUEST.name(),
+        return error(
+                HttpStatus.BAD_REQUEST,
                 ExceptionReasons.INCORRECT_REQUEST,
-                message,
-                errors
+                ExceptionMessages.VALIDATION_FAILED,
+                errorMessages
         );
     }
 
@@ -64,23 +61,17 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ExceptionResponse handleParamValidationExceptions(jakarta.validation.ConstraintViolationException ex,
                                                              HttpServletRequest req) {
-        var violation = ex.getConstraintViolations().stream().findFirst().orElse(null);
+        List<String> errorMessages = ex.getConstraintViolations().stream()
+                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
+                .toList();
 
-        String message = (violation == null)
-                ? ExceptionMessages.VALIDATION_FAILED
-                : String.format(ExceptionMessages.DEFAULT_FIELD_S_ERROR_S_VALUE_S_MESSAGE,
-                violation.getPropertyPath(),
-                violation.getMessage(),
-                violation.getInvalidValue()
-        );
+        log4xx(HttpStatus.BAD_REQUEST, req, "validation errors=%d", errorMessages.size());
 
-        log4xx(HttpStatus.BAD_REQUEST, req, message);
-
-        return new ExceptionResponse(
-                HttpStatus.BAD_REQUEST.name(),
+        return error(
+                HttpStatus.BAD_REQUEST,
                 ExceptionReasons.INCORRECT_REQUEST,
-                message
-        );
+                ExceptionMessages.VALIDATION_FAILED,
+                errorMessages);
     }
 
     //incorrect DateTime format, enum, incorrect JSON
@@ -96,8 +87,7 @@ public class GlobalExceptionHandler {
                                                         HttpServletRequest req) {
 
         String message = switch (ex) {
-            case HttpMessageNotReadableException _ ->
-                    ExceptionMessages.INCORRECT_HTTP_REQUEST_BODY;
+            case HttpMessageNotReadableException _ -> ExceptionMessages.INCORRECT_HTTP_REQUEST_BODY;
             case MethodArgumentTypeMismatchException mismatch -> String.format(
                     ExceptionMessages.MISMATCH_OF_TYPES_OF_PARAMETER_OF_REQUEST_AND_METHOD_ARGUMENT,
                     mismatch.getName(),
@@ -112,8 +102,8 @@ public class GlobalExceptionHandler {
 
         log4xx(HttpStatus.BAD_REQUEST, req, message);
 
-        return new ExceptionResponse(
-                HttpStatus.BAD_REQUEST.name(),
+        return error(
+                HttpStatus.BAD_REQUEST,
                 ExceptionReasons.INCORRECT_REQUEST,
                 message
         );
@@ -142,8 +132,8 @@ public class GlobalExceptionHandler {
             log4xx(HttpStatus.CONFLICT, req, "data integrity violation: %s", safeMostSpecificMessage(ex));
         }
 
-        return new ExceptionResponse(
-                HttpStatus.CONFLICT.name(),
+        return error(
+                HttpStatus.CONFLICT,
                 ExceptionReasons.DATA_CONFLICT,
                 message
         );
@@ -154,8 +144,8 @@ public class GlobalExceptionHandler {
     public ExceptionResponse handleBadRequest(BadRequestException ex,
                                               HttpServletRequest req) {
         log4xx(HttpStatus.BAD_REQUEST, req, ex.getMessage());
-        return new ExceptionResponse(
-                HttpStatus.BAD_REQUEST.name(),
+        return error(
+                HttpStatus.BAD_REQUEST,
                 ExceptionReasons.INCORRECT_REQUEST,
                 ex.getMessage()
         );
@@ -166,8 +156,8 @@ public class GlobalExceptionHandler {
     public ExceptionResponse handleNotFoundExceptions(NotFoundException ex,
                                                       HttpServletRequest req) {
         log4xx(HttpStatus.NOT_FOUND, req, ex.getMessage());
-        return new ExceptionResponse(
-                HttpStatus.NOT_FOUND.name(),
+        return error(
+                HttpStatus.NOT_FOUND,
                 ExceptionReasons.NOT_FOUND,
                 ex.getMessage()
         );
@@ -178,8 +168,8 @@ public class GlobalExceptionHandler {
     public ExceptionResponse handleConditionsNotMetExceptions(ConditionsNotMetException ex,
                                                               HttpServletRequest req) {
         log4xx(HttpStatus.CONFLICT, req, ex.getMessage());
-        return new ExceptionResponse(
-                HttpStatus.CONFLICT.name(),
+        return error(
+                HttpStatus.CONFLICT,
                 ExceptionReasons.CONDITIONS_NOT_MET,
                 ex.getMessage()
         );
@@ -190,30 +180,44 @@ public class GlobalExceptionHandler {
     public ExceptionResponse handleForbiddenExceptions(ForbiddenException ex,
                                                        HttpServletRequest req) {
         log4xx(HttpStatus.FORBIDDEN, req, ex.getMessage());
-        return new ExceptionResponse(
-                HttpStatus.FORBIDDEN.name(),
+        return error(
+                HttpStatus.FORBIDDEN,
                 ExceptionReasons.FORBIDDEN_OPERATION,
                 ex.getMessage()
         );
     }
 
-    @ExceptionHandler(Throwable.class)
+    @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ExceptionResponse handleUnexpectedExceptions(Throwable ex) {
+    public ExceptionResponse handleUnexpectedExceptions(Exception ex) {
         log.error("Unexpected error", ex);
-        return new ExceptionResponse(
-                HttpStatus.INTERNAL_SERVER_ERROR.name(),
+        return error(
+                HttpStatus.INTERNAL_SERVER_ERROR,
                 ExceptionReasons.INTERNAL_SERVER_ERROR,
                 ExceptionMessages.INTERNAL_SERVER_ERROR
         );
     }
 
     private String buildFieldMessage(FieldError fe) {
-        return String.format(
-                ExceptionMessages.DEFAULT_FIELD_S_ERROR_S_VALUE_S_MESSAGE,
-                fe.getField(),
-                fe.getDefaultMessage(),
-                fe.getRejectedValue()
+        return fe.getField() + ": " + fe.getDefaultMessage();
+    }
+
+    private ExceptionResponse error(HttpStatus status, String reason, String message) {
+        return new ExceptionResponse(
+                status.name(),
+                reason,
+                message,
+                now()
+        );
+    }
+
+    private ExceptionResponse error(HttpStatus status, String reason, String message, List<String> errors) {
+        return new ExceptionResponse(
+                status.name(),
+                reason,
+                message,
+                now(),
+                errors
         );
     }
 
@@ -249,5 +253,9 @@ public class GlobalExceptionHandler {
     private String pathWithQuery(HttpServletRequest req) {
         String qs = req.getQueryString();
         return (qs == null || qs.isBlank()) ? req.getRequestURI() : req.getRequestURI() + "?" + qs;
+    }
+
+    private Instant now() {
+        return Instant.now(clock);
     }
 }
