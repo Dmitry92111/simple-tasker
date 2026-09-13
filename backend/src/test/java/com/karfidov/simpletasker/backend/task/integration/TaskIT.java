@@ -234,9 +234,13 @@ public class TaskIT extends AbstractIntegrationTest {
                 TaskStatus.NEW
         );
 
+        Task task7 = existingTasks10.get(6);
+
         existingTasks10.sort(Comparator.comparing(Task::getCreatedAt).reversed());
 
         taskRepository.saveAllAndFlush(existingTasks10);
+
+        Long task7id = task7.getId();
 
         MultiValueMap<String, String> queryParams = new LinkedMultiValueMap<>();
         queryParams.add("sortMode", "ASC");
@@ -245,7 +249,7 @@ public class TaskIT extends AbstractIntegrationTest {
 
         int expectedPageNumber = 2; //starts from 0 -> 0, 1, 2, 3 ...
         int expectedAmountOfObjectsAtThePage = 3;
-        long expectedTotalElements = existingTasks10.size();
+        Long expectedTotalElements = 10L;
         int expectedTotalPages = 4;
 
         mockMvc.perform(get("/api/v1/tasks")
@@ -257,7 +261,7 @@ public class TaskIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.totalElements").value(expectedTotalElements))
                 .andExpect(jsonPath("$.totalPages").value(expectedTotalPages))
                 .andExpect(jsonPath("$.items", hasSize(expectedAmountOfObjectsAtThePage)))
-                .andExpect(jsonPath("$.items[0].id").isNumber())
+                .andExpect(jsonPath("$.items[0].id").value(is(task7id), Long.class))
                 .andExpect(jsonPath("$.items[0].createdAt")
                         .value(Instant.parse("2026-01-01T12:00:00Z")
                                 .plus(6 * 10, ChronoUnit.MINUTES)
@@ -315,6 +319,159 @@ public class TaskIT extends AbstractIntegrationTest {
                         "Test Title 6", "Test Title 5", "Test Title 4"
                 )));
 
+    }
+
+    @Test
+    void getAllTasks_shouldReturnCorrectPageResponse_whenStatusFilterIsProvidedAndAppropriateTasksMoreThanPageSize() throws Exception {
+        List<Task> existingTasks20_InProgress6 = createTasksInChronologicalOrder(
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE
+        );
+
+        taskRepository.saveAllAndFlush(existingTasks20_InProgress6);
+
+        int expectedPageNumber = 1; //starts from 0 -> 0, 1, 2, 3 ...
+        int expectedPageSize = 4;
+        long expectedTotalElements = 6L;
+        int expectedTotalPages = 2;
+
+        MultiValueMap<String, String> queryParams = new LinkedMultiValueMap<>();
+        queryParams.add("status", "IN_PROGRESS");
+        queryParams.add("sortBy", "CREATED_AT");
+        queryParams.add("sortMode", "DESC");
+        queryParams.add("page", "1");
+        queryParams.add("size", "4");
+
+        mockMvc.perform(get("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .queryParams(queryParams))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(expectedPageNumber))
+                .andExpect(jsonPath("$.size").value(expectedPageSize))
+                .andExpect(jsonPath("$.totalElements").value(expectedTotalElements))
+                .andExpect(jsonPath("$.totalPages").value(expectedTotalPages))
+                .andExpect(jsonPath("$.items", hasSize(2)))
+                .andExpect(jsonPath("$.items[*].status", everyItem(is("IN_PROGRESS"))))
+                .andExpect(jsonPath("$.items[*].title", contains(
+                        "Test Title 5", "Test Title 4"
+                )));
+    }
+
+    @Test
+    void getAllTasks_shouldReturnEmptyPage_whenStatusFilterIsProvidedAndNoAppropriateTasksInDB() throws Exception {
+        List<Task> existingTasksNewOnly3 = createTasksInChronologicalOrder(
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.NEW
+        );
+
+        taskRepository.saveAllAndFlush(existingTasksNewOnly3);
+
+        assertThat(taskRepository.findAll()).hasSize(3);
+
+        int expectedPageNumber = 0; //starts from 0 -> 0, 1, 2, 3 ...
+        int expectedPageSize = 10;
+        long expectedTotalElements = 0L;
+        int expectedTotalPages = 0;
+
+        mockMvc.perform(get("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .queryParam("status", "IN_PROGRESS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(expectedPageNumber))
+                .andExpect(jsonPath("$.size").value(expectedPageSize))
+                .andExpect(jsonPath("$.totalElements").value(expectedTotalElements))
+                .andExpect(jsonPath("$.totalPages").value(expectedTotalPages))
+                .andExpect(jsonPath("$.items", empty()));
+    }
+
+    @Test
+    void getAllTasks_shouldReturnEmptyPage_whenPageNumberIsOutsideRangeOfFoundedTasks() throws Exception {
+        List<Task> existingTasks20_InProgress6 = createTasksInChronologicalOrder(
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.NEW,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE,
+                TaskStatus.DONE
+        );
+
+        taskRepository.saveAllAndFlush(existingTasks20_InProgress6);
+
+        int expectedPageNumber = 2; //starts from 0 -> 0, 1, 2, 3 ...
+        int expectedPageSize = 10;
+        long expectedTotalElements = 20L;
+        int expectedTotalPages = 2;
+
+        MultiValueMap<String, String> queryParams = new LinkedMultiValueMap<>();
+        queryParams.add("sortBy", "CREATED_AT");
+        queryParams.add("sortMode", "DESC");
+        queryParams.add("page", "2");
+        queryParams.add("size", "10");
+
+        mockMvc.perform(get("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .queryParams(queryParams))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(expectedPageNumber))
+                .andExpect(jsonPath("$.size").value(expectedPageSize))
+                .andExpect(jsonPath("$.totalElements").value(expectedTotalElements))
+                .andExpect(jsonPath("$.totalPages").value(expectedTotalPages))
+                .andExpect(jsonPath("$.items", empty()
+                ));
+    }
+
+    @Test
+    void getAllTasks_shouldReturnEmptyPage_whenDataBaseIsClear() throws Exception {
+
+        assertThat(taskRepository.findAll()).isEmpty();
+
+        int expectedPageNumber = 0; //starts from 0 -> 0, 1, 2, 3 ...
+        int expectedPageSize = 10;
+        long expectedTotalElements = 0L;
+        int expectedTotalPages = 0;
+
+        mockMvc.perform(get("/api/v1/tasks")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(expectedPageNumber))
+                .andExpect(jsonPath("$.size").value(expectedPageSize))
+                .andExpect(jsonPath("$.totalElements").value(expectedTotalElements))
+                .andExpect(jsonPath("$.totalPages").value(expectedTotalPages))
+                .andExpect(jsonPath("$.items", empty()
+                ));
     }
 
     private List<Task> createTasksInChronologicalOrder(TaskStatus... statuses) {
